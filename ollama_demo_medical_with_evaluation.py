@@ -11,12 +11,11 @@ DOMAIN = "Analyze these clinical records and identify key medical entities. Focu
 
 # Example queries for GraphRAG
 EXAMPLE_QUERIES = [
-    "What are the common risk factors for sepsis in ICU patients?",
-    "How do trends in lab results correlate with patient outcomes in cases of acute kidney injury?",
-    "Describe the sequence of interventions for patients undergoing major cardiac surgery.",
-    "How do patient demographics and comorbidities influence treatment decisions in the ICU?",
-    "What patterns of medication usage are observed among patients with chronic obstructive pulmonary disease (COPD)?"
-]
+    "What are the most common treatments for cardiogenic shock in patients with a history of stroke?",
+    "What are the major diagnoses present in the patient records?",
+    "Which medications are commonly prescribed for congestive heart failure patients?",
+    "Describe complications associated with acute renal failure.",
+    ]
 
 # Define entity types for the knowledge graph
 ENTITY_TYPES = ["Patient", "Diagnosis", "Procedure", "Lab Test", "Medication", "Outcome"]
@@ -139,11 +138,12 @@ grag.save_graphml(
 # ---------------- Example Queries ---------------- #
 
 queries = [
-    "What are the most common treatments for cardiogenic shock in patients with a history of stroke?",
-    "What are the major diagnoses present in the patient records?",
-    "Which medications are commonly prescribed for congestive heart failure patients?",
-    "Describe complications associated with acute renal failure.",
-]
+    "What are the common risk factors for sepsis in ICU patients?",
+    "How do trends in lab results correlate with patient outcomes in cases of acute kidney injury?",
+    "Describe the sequence of interventions for patients undergoing major cardiac surgery.",
+    "How do patient demographics and comorbidities influence treatment decisions in the ICU?",
+    "What patterns of medication usage are observed among patients with chronic obstructive pulmonary disease (COPD)?"
+    ]
 
 # GRAPH RAG QUERY OUTPUTS
 
