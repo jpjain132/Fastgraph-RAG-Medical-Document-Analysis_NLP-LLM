@@ -237,7 +237,7 @@ print("================================================================")
 
 # Why This Hallucination Logic Works
 
-The hallucination rate is computed as:
+# The hallucination rate is computed as:
 
 ```python
 hallucination_rate = (
