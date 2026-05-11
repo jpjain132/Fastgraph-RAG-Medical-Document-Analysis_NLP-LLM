@@ -145,7 +145,7 @@ queries = [
     "Describe complications associated with acute renal failure.",
 ]
 
-print("\n================ GRAPH RAG QUERY OUTPUTS =================")
+# GRAPH RAG QUERY OUTPUTS
 
 for q in queries:
 
@@ -225,13 +225,14 @@ hallucination_rate = (
 
 # ---------------- Final Metrics Output ---------------- #
 
-print("\n================ GRAPH RAG EVALUATION METRICS =================")
-print(f"Accuracy Score           : {accuracy * 100:.2f}%")
-print(f"Precision Score          : {precision * 100:.2f}%")
-print(f"Recall Score             : {recall * 100:.2f}%")
+print("\n================ NLP METRICS =================")
+print(f"Accuracy                 : {accuracy * 100:.2f}%")
+print(f"Precision                : {precision * 100:.2f}%")
+print(f"Recall                   : {recall * 100:.2f}%")
 print(f"F1 Score                 : {f1_score:.2f}%")
-print(f"Hallucination Rate       : {hallucination_rate:.2f}%")
 print(f"False Positives          : {sum(false_positives)}")
+print(f"Hallucination Rate       : {hallucination_rate:.2f}%")
+
 print("================================================================")
 
 
