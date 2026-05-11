@@ -234,12 +234,6 @@ print(f"Hallucination Rate       : {hallucination_rate:.2f}%")
 print(f"False Positives          : {sum(false_positives)}")
 print("================================================================")
 
-# ---------------- Summary Statement ---------------- #
-
-print("\nAchieved 89.59% F1 Score in relation extraction with 8.3% hallucination rate.")
-```
-
----
 
 # Why This Hallucination Logic Works
 
