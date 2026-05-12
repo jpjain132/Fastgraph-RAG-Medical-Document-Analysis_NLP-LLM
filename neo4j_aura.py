@@ -10,7 +10,7 @@ BATCH_SIZE_EDGES = 100
 # Neo4j connection credentials
 NEO4J_URI = "neo4j+s://3bc37e79.databases.neo4j.io"
 NEO4J_USERNAME = "neo4j"
-NEO4J_PASSWORD = "WZZC0lOs9zfsMz3xRoHY96BBq69lfCBaFPc38vSzqIc"   # Your neo4j instance password
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")   # Your neo4j instance password
 
 
 def convert_xml_to_json(xml_path, output_path):
