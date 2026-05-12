@@ -1,4 +1,4 @@
-# Fastgraph-RAG-Medical-Document-Analysis
+# Cost-Effective Medical Document Analysis using Knowledge Graphs (Fastgraph+NLP+LLM)
 
 You can download dataset from links mentioned in code files or link below:
 https://huggingface.co/datasets/morson/mimic_ex/blob/main/dataset.zip
