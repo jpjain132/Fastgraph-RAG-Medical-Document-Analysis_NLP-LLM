@@ -1,249 +1,681 @@
+# ============================================================
+# IMPORTS
+# ============================================================
+
 import instructor  # Structured outputs for LLMs
 import os
 import re
-from fast_graphrag import GraphRAG, QueryParam
-from fast_graphrag._llm import OpenAIEmbeddingService, OpenAILLMService
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+import spacy
 import numpy as np
 
-# Define the domain for analysis
-DOMAIN = "Analyze these clinical records and identify key medical entities. Focus on patient demographics, diagnoses, procedures, lab results, and outcomes."
+from fast_graphrag import GraphRAG, QueryParam
+from fast_graphrag._llm import (
+    OpenAIEmbeddingService,
+    OpenAILLMService
+)
 
-# Example queries for GraphRAG
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    confusion_matrix
+)
+
+# ============================================================
+# LOAD BIOMEDICAL NLP MODEL
+# ============================================================
+
+"""
+WHY THIS IS IMPORTANT:
+
+Previously:
+------------
+You manually created:
+true_labels = [...]
+predicted_labels = [...]
+
+That was synthetic evaluation.
+
+NOW:
+-----
+We will extract REAL biomedical entities from:
+1. Original medical reports
+2. GraphRAG generated responses
+
+using biomedical NLP models.
+
+This makes the evaluation REAL and dataset-driven.
+"""
+
+# Install before running:
+#
+# pip install scispacy
+# pip install https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/en_core_sci_sm-0.5.4.tar.gz
+
+nlp = spacy.load("en_core_sci_sm")
+
+# ============================================================
+# DEFINE DOMAIN FOR MEDICAL ANALYSIS
+# ============================================================
+
+DOMAIN = """
+Analyze these clinical records and identify key medical entities.
+Focus on patient demographics, diagnoses, procedures,
+lab results, medications, and outcomes.
+"""
+
+# ============================================================
+# EXAMPLE QUERIES FOR GRAPHRAG
+# ============================================================
+
 EXAMPLE_QUERIES = [
+
     "What are the most common treatments for cardiogenic shock in patients with a history of stroke?",
+
     "What are the major diagnoses present in the patient records?",
+
     "Which medications are commonly prescribed for congestive heart failure patients?",
+
     "Describe complications associated with acute renal failure.",
-    ]
+]
 
-# Define entity types for the knowledge graph
-ENTITY_TYPES = ["Patient", "Diagnosis", "Procedure", "Lab Test", "Medication", "Outcome"]
+# ============================================================
+# DEFINE ENTITY TYPES
+# ============================================================
 
-# Define working directory
+ENTITY_TYPES = [
+
+    "Patient",
+    "Diagnosis",
+    "Procedure",
+    "Lab Test",
+    "Medication",
+    "Outcome"
+]
+
+# ============================================================
+# WORKING DIRECTORY
+# ============================================================
+
 working_dir = "./WORKING_DIR/mimic_ex500/"
 
-# Initialize GraphRAG
+# ============================================================
+# INITIALIZE GRAPHRAG
+# ============================================================
+
+"""
+GRAPH RAG PIPELINE:
+
+Medical Records
+      ↓
+Embedding Generation
+      ↓
+Entity Extraction
+      ↓
+Knowledge Graph Creation
+      ↓
+Graph Retrieval
+      ↓
+LLM Reasoning
+      ↓
+Semantic Answer Generation
+"""
+
 grag = GraphRAG(
+
     working_dir=working_dir,
+
     n_checkpoints=2,
+
     domain=DOMAIN,
+
     example_queries="\n".join(EXAMPLE_QUERIES),
+
     entity_types=ENTITY_TYPES,
+
     config=GraphRAG.Config(
+
         llm_service=OpenAILLMService(
+
             model="llama3.2",
+
             base_url="http://localhost:11434/v1",
+
             api_key="ollama",
+
             mode=instructor.Mode.JSON,
+
             client="openai",
         ),
+
         embedding_service=OpenAIEmbeddingService(
+
             model="nomic-embed-text",
+
             base_url="http://localhost:11434/v1",
+
             api_key="ollama",
+
             embedding_dim=768,
+
             client="openai"
         ),
     ),
 )
 
+# ============================================================
+# EMBEDDING SERVICE
+# ============================================================
+
 embedding_service = OpenAIEmbeddingService(
+
     model="nomic-embed-text",
+
     base_url="http://localhost:11434/v1",
+
     api_key="ollama",
+
     embedding_dim=768,
+
     client="openai"
 )
 
-# Generate sample embedding
+# ============================================================
+# VERIFY EMBEDDINGS
+# ============================================================
+
 sample_embedding = embedding_service.get_embedding("test text")
+
 print(f"Embedding dimension: {len(sample_embedding)}")
 
-# Path to directory containing medical text files
+# ============================================================
+# DATASET DIRECTORY
+# ============================================================
+
 directory_path = r"E:\semester 4\FastGraphRAG-Medical-Document-Analysis\mimic_ex_500"
 
-# Function to clean and preprocess the medical text
+# ============================================================
+# CLEAN AND STRUCTURE MEDICAL TEXT
+# ============================================================
+
 def clean_medical_text(text):
+
     """
-    Cleans and structures medical text to extract relevant information
-    for GraphRAG processing.
+    PURPOSE:
+    --------
+    Extract important clinical sections from raw reports.
+
+    WHY?
+    -----
+    Cleaner structured data improves:
+    - Graph quality
+    - Retrieval quality
+    - Entity consistency
+    - LLM reasoning
     """
 
-    # Remove multiple spaces
+    # Remove excessive spaces/newlines
     text = re.sub(r"\s+", " ", text)
 
-    # Extract important medical sections
+    # Extract important sections
     sections = {
-        "medical_history": re.search(r"past medical history:(.*?)(?:social history:|physical exam:)", text, re.I),
-        "social_history": re.search(r"social history:(.*?)(?:family history:|physical exam:)", text, re.I),
-        "medications": re.search(r"medications on admission:(.*?)(?:discharge medications:|discharge disposition:)", text, re.I),
-        "lab_results": re.search(r"pertinent results:(.*?)(?:brief hospital course:|discharge diagnosis:)", text, re.I),
-        "diagnoses": re.search(r"discharge diagnosis:(.*?)(?:discharge condition:|discharge instructions:)", text, re.I),
+
+        "medical_history":
+
+            re.search(
+                r"past medical history:(.*?)(?:social history:|physical exam:)",
+                text,
+                re.I
+            ),
+
+        "social_history":
+
+            re.search(
+                r"social history:(.*?)(?:family history:|physical exam:)",
+                text,
+                re.I
+            ),
+
+        "medications":
+
+            re.search(
+                r"medications on admission:(.*?)(?:discharge medications:|discharge disposition:)",
+                text,
+                re.I
+            ),
+
+        "lab_results":
+
+            re.search(
+                r"pertinent results:(.*?)(?:brief hospital course:|discharge diagnosis:)",
+                text,
+                re.I
+            ),
+
+        "diagnoses":
+
+            re.search(
+                r"discharge diagnosis:(.*?)(?:discharge condition:|discharge instructions:)",
+                text,
+                re.I
+            ),
     }
 
-    # Convert extracted sections into structured dictionary
     structured_data = {
+
         key: (match.group(1).strip() if match else "")
+
         for key, match in sections.items()
     }
 
     return structured_data
 
-# Function to insert processed records into GraphRAG
+# ============================================================
+# REAL GROUND TRUTH ENTITY EXTRACTION
+# ============================================================
+
+"""
+THIS IS THE BIG FIX.
+
+Previously:
+-------------
+Ground truth labels were manually typed.
+
+NOW:
+-----
+Ground truth entities are extracted directly
+from REAL medical reports using biomedical NLP.
+"""
+
+def extract_true_entities(text):
+
+    doc = nlp(text)
+
+    entities = []
+
+    for ent in doc.ents:
+
+        cleaned_entity = ent.text.strip().lower()
+
+        # Avoid tiny/noisy entities
+        if len(cleaned_entity) > 2:
+
+            entities.append(cleaned_entity)
+
+    return list(set(entities))
+
+# ============================================================
+# EXTRACT ENTITIES FROM GRAPHRAG RESPONSE
+# ============================================================
+
+"""
+These are the PREDICTED entities generated by:
+- GraphRAG
+- Knowledge Graph Retrieval
+- LLM reasoning
+"""
+
+def extract_predicted_entities(response):
+
+    doc = nlp(response)
+
+    predicted_entities = []
+
+    for ent in doc.ents:
+
+        cleaned_entity = ent.text.strip().lower()
+
+        if len(cleaned_entity) > 2:
+
+            predicted_entities.append(cleaned_entity)
+
+    return list(set(predicted_entities))
+
+# ============================================================
+# INSERT DOCUMENTS INTO GRAPHRAG
+# ============================================================
+
 def graph_index(directory_path):
 
     file_count = 0
 
+    total_files = sum(
+        1 for f in os.listdir(directory_path)
+        if f.endswith(".txt")
+    )
+
     for filename in os.listdir(directory_path):
+
         if filename.endswith('.txt'):
 
             file_path = os.path.join(directory_path, filename)
 
-            with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read()
+            try:
 
-                # Clean medical text
-                structured_data = clean_medical_text(content)
+                with open(file_path, 'r', encoding='utf-8') as file:
 
-                # Avoid None values
-                for key in structured_data:
-                    structured_data[key] = structured_data[key] or "Unknown"
+                    content = file.read()
 
-                # Insert into GraphRAG
-                grag.insert(str(structured_data))
+                    # Clean report
+                    structured_data = clean_medical_text(content)
 
-            file_count += 1
+                    # Replace missing values
+                    for key in structured_data:
 
-            total_files = sum(
-                1 for f in os.listdir(directory_path)
-                if f.endswith(".txt")
-            )
+                        structured_data[key] = (
+                            structured_data[key]
+                            or
+                            "Unknown"
+                        )
 
-            print("******************** $$$$$$ *****************")
-            print(f"Total Files Processed: -> {file_count} / {total_files}")
-            print("******************** $$$$$$ *****************")
+                    # Insert into GraphRAG
+                    grag.insert(str(structured_data))
 
-# Index dataset into GraphRAG
+                file_count += 1
+
+                print("*******************************************")
+                print(f"Processed Files: {file_count}/{total_files}")
+                print("*******************************************")
+
+            except Exception as e:
+
+                print(f"Error processing {filename}: {e}")
+
+# ============================================================
+# INDEX DATASET
+# ============================================================
+
 graph_index(directory_path)
 
-# Save graph for Neo4j visualization
+# ============================================================
+# SAVE GRAPHML FOR NEO4J
+# ============================================================
+
 print("**********************************************")
+
 os.makedirs("neo4j_graph", exist_ok=True)
 
 grag.save_graphml(
-    output_path="neo4j_graph/oxford_graph_chunk_entity_relation.graphml"
+
+    output_path=
+    "neo4j_graph/oxford_graph_chunk_entity_relation.graphml"
 )
 
-# ---------------- Example Queries ---------------- #
+# ============================================================
+# SAMPLE QUERIES
+# ============================================================
 
 queries = [
+
     "What are the common risk factors for sepsis in ICU patients?",
+
     "How do trends in lab results correlate with patient outcomes in cases of acute kidney injury?",
+
     "Describe the sequence of interventions for patients undergoing major cardiac surgery.",
+
     "How do patient demographics and comorbidities influence treatment decisions in the ICU?",
+
     "What patterns of medication usage are observed among patients with chronic obstructive pulmonary disease (COPD)?"
-    ]
-
-# GRAPH RAG QUERY OUTPUTS
-
-for q in queries:
-
-    result = grag.query(q)
-
-    print(f"\nQuestion: {q}")
-    print("Answer:")
-    print(result.response)
-
-print("==========================================================")
-
-# ---------------- Evaluation Section ---------------- #
-
-# Ground truth labels for relation extraction
-true_labels = [
-    "TreatmentA",
-    "TreatmentB",
-    "TreatmentC",
-    "TreatmentA",
-    "TreatmentD"
 ]
 
-# Predicted labels generated by GraphRAG
-predicted_labels = [
-    "TreatmentA",
-    "TreatmentB",
-    "TreatmentC",
-    "TreatmentX",
-    "TreatmentD"
-]
+# ============================================================
+# QUERY GRAPHRAG
+# ============================================================
 
-# Calculate evaluation metrics
-accuracy = accuracy_score(true_labels, predicted_labels)
-precision = precision_score(true_labels, predicted_labels, average='macro', zero_division=0)
-recall = recall_score(true_labels, predicted_labels, average='macro', zero_division=0)
-f1 = f1_score(true_labels, predicted_labels, average='macro', zero_division=0)
+print("\n================ GRAPH RAG RESPONSES ================\n")
 
-# Confusion matrix for false positives
-conf_matrix = confusion_matrix(
-    true_labels,
-    predicted_labels,
-    labels=list(set(true_labels + predicted_labels))
+all_true_labels = []
+all_predicted_labels = []
+
+hallucinated_relations = 0
+total_generated_relations = 0
+
+# ============================================================
+# REAL EVALUATION LOOP
+# ============================================================
+
+"""
+REAL EVALUATION PIPELINE:
+
+Original Medical Record
+            vs
+GraphRAG Generated Response
+
+This is now REAL evaluation.
+"""
+
+for filename in os.listdir(directory_path):
+
+    if filename.endswith(".txt"):
+
+        file_path = os.path.join(directory_path, filename)
+
+        with open(file_path, "r", encoding="utf-8") as f:
+
+            original_text = f.read()
+
+        # ====================================================
+        # EXTRACT REAL GROUND TRUTH ENTITIES
+        # ====================================================
+
+        true_entities = extract_true_entities(original_text)
+
+        # ====================================================
+        # RUN ALL SAMPLE QUERIES
+        # ====================================================
+
+        """
+        IMPORTANT CHANGE:
+        -----------------
+        Previously:
+        A random/custom query was created:
+        
+        "What are the diagnoses, medications..."
+
+        NOW:
+        -----
+        We use ONLY the official queries
+        already defined in your project.
+
+        This keeps:
+        - evaluation aligned with project goals
+        - query consistency
+        - cleaner benchmarking
+        - realistic GraphRAG testing
+        """
+
+        for query in queries:
+
+            # =================================================
+            # ASK GRAPHRAG QUESTION
+            # =================================================
+
+            result = grag.query(query)
+
+            print(f"\nQuestion: {query}")
+
+            print("\nGenerated Response:")
+
+            print(result.response)
+
+            # ================================================
+            # EXTRACT PREDICTED ENTITIES
+            # ================================================
+
+            predicted_entities = extract_predicted_entities(
+                result.response
+            )
+
+            # ================================================
+            # CONVERT TO BINARY LABELS
+            # ================================================
+
+            all_entities = list(
+                set(true_entities + predicted_entities)
+            )
+
+            y_true = [
+
+                1 if entity in true_entities else 0
+
+                for entity in all_entities
+            ]
+
+            y_pred = [
+
+                1 if entity in predicted_entities else 0
+
+                for entity in all_entities
+            ]
+
+            # Store globally for final metrics
+            all_true_labels.extend(y_true)
+
+            all_predicted_labels.extend(y_pred)
+
+            # ================================================
+            # REAL HALLUCINATION DETECTION
+            # ================================================
+
+            """
+            LOGIC:
+            -------
+            If generated entity is absent
+            in original medical report,
+            treat as hallucination.
+            """
+
+            for entity in predicted_entities:
+
+                total_generated_relations += 1
+
+                if entity not in original_text.lower():
+
+                    hallucinated_relations += 1
+
+# ============================================================
+# CALCULATE REAL EVALUATION METRICS
+# ============================================================
+
+accuracy = accuracy_score(
+    all_true_labels,
+    all_predicted_labels
 )
 
-false_positives = conf_matrix.sum(axis=0) - np.diag(conf_matrix)
+precision = precision_score(
+    all_true_labels,
+    all_predicted_labels,
+    zero_division=0
+)
 
-# ---------------- Hallucination Rate Evaluation ---------------- #
+recall = recall_score(
+    all_true_labels,
+    all_predicted_labels,
+    zero_division=0
+)
 
-# Example generated relations by GraphRAG
-predicted_relations = [
-    "CHF treated with furosemide",
-    "Acute renal failure associated with hypotension",
-    "Cardiac arrest caused by sepsis",
-    "Stroke treated using insulin",
-    "Diabetes managed with insulin"
-]
+f1 = f1_score(
+    all_true_labels,
+    all_predicted_labels,
+    zero_division=0
+)
 
-# Ground truth verified relations from medical records
-true_relations = [
-    "CHF treated with furosemide",
-    "Acute renal failure associated with hypotension",
-    "Cardiac arrest caused by sepsis",
-    "Diabetes managed with insulin"
-]
+# ============================================================
+# CONFUSION MATRIX
+# ============================================================
 
-# Count hallucinated relations
-hallucinated_relations = 0
+conf_matrix = confusion_matrix(
+    all_true_labels,
+    all_predicted_labels
+)
 
-for relation in predicted_relations:
-    if relation not in true_relations:
-        hallucinated_relations += 1
+# Safe extraction
+if conf_matrix.shape == (2, 2):
 
-# Hallucination Rate Formula
+    tn, fp, fn, tp = conf_matrix.ravel()
+
+else:
+
+    tn = fp = fn = tp = 0
+
+# ============================================================
+# FALSE POSITIVE RATE
+# ============================================================
+
+false_positive_rate = (
+
+    fp / (fp + tn)
+
+    if (fp + tn) > 0
+
+    else 0
+)
+
+# ============================================================
+# HALLUCINATION RATE
+# ============================================================
+
 hallucination_rate = (
-    hallucinated_relations / len(predicted_relations)
+
+    hallucinated_relations / total_generated_relations
+
+    if total_generated_relations > 0
+
+    else 0
 ) * 100
 
-# ---------------- Final Metrics Output ---------------- #
+# ============================================================
+# FINAL RESULTS
+# ============================================================
 
-print("\n================ NLP METRICS =================")
+print("================ NLP METRICS ====================")
+
 print(f"Accuracy                 : {accuracy * 100:.2f}%")
+
 print(f"Precision                : {precision * 100:.2f}%")
+
 print(f"Recall                   : {recall * 100:.2f}%")
-print(f"F1 Score                 : {f1_score:.2f}%")
-print(f"False Positives          : {sum(false_positives)}")
+
+print(f"F1 Score                 : {f1 * 100:.2f}%")
+
+print(f"False Positive Rate      : {false_positive_rate:.2f}")
+
 print(f"Hallucination Rate       : {hallucination_rate:.2f}%")
 
-print("================================================================")
+print("====================================================")
 
+# ============================================================
+# WHY THIS EVALUATION IS NOW REAL
+# ============================================================
 
-# Why This Hallucination Logic Works
+"""
+BEFORE:
+--------
+- Manual labels
+- Synthetic examples
+- Artificial relations
 
-# The hallucination rate is computed as:
+NOW:
+-----
+- Ground truth extracted from REAL reports
+- Predictions extracted from REAL GraphRAG responses
+- Metrics computed dynamically
+- Hallucinations verified against source text
 
-```python
-hallucination_rate = (
-    hallucinated_relations / total_predicted_relations
+This is now REAL evaluation.
+"""
+
+# ============================================================
+# HALLUCINATION FORMULA
+# ============================================================
+
+"""
+hallucination_rate =
+
+(
+    hallucinated_relations
+    /
+    total_generated_relations
 ) * 100
-```
-
-
+"""
